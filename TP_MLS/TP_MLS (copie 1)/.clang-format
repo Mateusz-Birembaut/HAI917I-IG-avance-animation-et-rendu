@@ -1,0 +1,36 @@
+# .clang-format pour projet C++ moderne
+BasedOnStyle: LLVM
+
+# Indentation
+IndentWidth: 8
+TabWidth: 8
+UseTab: Always
+NamespaceIndentation: All
+
+# Gestion des accolades
+BreakBeforeBraces: Attach          # fonctions, classes, namespaces
+AllowShortFunctionsOnASingleLine: Empty
+AllowShortIfStatementsOnASingleLine: false
+AllowShortLoopsOnASingleLine: false
+AllowShortBracesOnASingleLine: false  # <--- force les {} sur plusieurs lignes
+
+# Brace wrapping pour les structures complexes
+BraceWrapping:
+  AfterStruct: true
+  AfterClass: true
+  AfterEnum: true
+  AfterFunction: false
+  AfterNamespace: true
+  BeforeElse: true
+  IndentBraces: false
+
+# Autres options utiles
+ColumnLimit: 0              # pas de limite de colonne
+AlignConsecutiveAssignments: false
+AlignConsecutiveDeclarations: false
+SpaceInEmptyParentheses: false
+SpacesInContainerLiterals: true
+PointerAlignment: Left
+
+# Lignes vides et style
+MaxEmptyLinesToKeep: 1
