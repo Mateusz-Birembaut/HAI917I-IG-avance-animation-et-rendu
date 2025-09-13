@@ -80,6 +80,9 @@
         "__tree": "cpp",
         "strstream": "cpp",
         "future": "cpp",
-        "__split_buffer": "cpp"
+        "__split_buffer": "cpp",
+        "charconv": "cpp",
+        "format": "cpp",
+        "span": "cpp"
     }
 }

@@ -14,6 +14,8 @@
 // purpose.
 // -------------------------------------------
 
+#include "chrono.h"
+
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
@@ -41,10 +43,10 @@ std::vector<Vec3> normals2;
 std::vector<Vec3> g_outputPositions;
 std::vector<unsigned int> g_outputTriangles;
 
-static std::vector<Vec3> dbgGridNodesPos;
-static std::vector<Vec3> dbgGridNodesNeg;
-static std::vector<Vec3> dbgCentersPos;
-static std::vector<Vec3> dbgCentersNeg;
+/* std::vector<Vec3> dbgGridNodesPos;
+std::vector<Vec3> dbgGridNodesNeg;
+std::vector<Vec3> dbgCentersPos;
+std::vector<Vec3> dbgCentersNeg; */
 
 namespace KernelType {
 	enum KernelType {
@@ -380,12 +382,11 @@ void HPSS(const Vec3& inputPoint, Vec3& outputPoint, Vec3& outputNormal,
 	Vec3 point{inputPoint};
 	Vec3 normalOut(0.0f, 0.0f, 0.0f);
 	// repeter nbIterations fois
+	ANNidxArray id_nearest_neighbors = new ANNidx[knn];
+	ANNdistArray square_distances_to_neighbors = new ANNdist[knn];
 	for (size_t i{0}; i < nbIterations; ++i) {
 
 		// trouver x voisins avec kdtree
-		ANNidxArray id_nearest_neighbors = new ANNidx[knn];
-		ANNdistArray square_distances_to_neighbors = new ANNdist[knn];
-
 		kdTree.knearest(point, knn, id_nearest_neighbors, square_distances_to_neighbors);
 		Vec3 centroid(0.0f, 0.0f, 0.0f);
 		Vec3 normal(0.0f, 0.0f, 0.0f);
@@ -420,9 +421,10 @@ void HPSS(const Vec3& inputPoint, Vec3& outputPoint, Vec3& outputNormal,
 		point = centroid;
 		normalOut = normal;
 
-		delete[] id_nearest_neighbors;
-		delete[] square_distances_to_neighbors;
+
 	}
+	delete[] id_nearest_neighbors;
+	delete[] square_distances_to_neighbors;
 	outputPoint = point;
 	outputNormal = normalOut;
 }
@@ -467,42 +469,7 @@ float sdfHPSS(const Vec3& inputPoint, const std::vector<Vec3>& positions, const 
 template <typename T>
 using Array3D = std::vector<std::vector<std::vector<T>>>;
 
-int to1d(int i, int j, int k, int gridSize) {
-	return (k * gridSize * gridSize) + (j * gridSize) + i;
-}
 
-Vec3& getVec(Array3D<Vec3>& grid, int gridSize, int index) {
-	int z = index / (gridSize * gridSize);
-	index -= (z * gridSize * gridSize);
-	int y = index / gridSize;
-	int x = index % gridSize;
-
-	return grid[x][y][z];
-}
-
-bool isCubeActive(const Array3D<float>& sdfGrid, int i, int j, int k) {
-	bool isNeg = false;
-	bool isPos = false;
-
-	float vertices[8] = {
-	    sdfGrid[i][j][k],
-	    sdfGrid[i + 1][j][k],
-	    sdfGrid[i + 1][j + 1][k],
-	    sdfGrid[i][j + 1][k],
-	    sdfGrid[i][j][k + 1],
-	    sdfGrid[i + 1][j][k + 1],
-	    sdfGrid[i + 1][j + 1][k + 1],
-	    sdfGrid[i][j + 1][k + 1]};
-
-	for (const auto sdf : vertices) {
-		if (sdf > 0)
-			isPos = true;
-		else if (sdf <= 0)
-			isNeg = true;
-	}
-
-	return isPos && isNeg;
-}
 
 struct vecIndices {
 	int indices[3];
@@ -520,51 +487,42 @@ void addTriangles(int i, int j, int k, Direction::To endEdge, const Array3D<Vec3
 	if(j == 0 && endEdge != Direction::BOTTOM) return;
 	if(k == 0 && endEdge != Direction::BACK) return;
 
-	std::vector<vecIndices> indicesCubesToConnect;
+	std::array<vecIndices, 4> indicesCubesToConnect;
+	float sdfEdgeEnd{};
 	switch (endEdge) {
 	case Direction::RIGHT:
-		indicesCubesToConnect.push_back({i, j - 1, k - 1});
-		indicesCubesToConnect.push_back({i, j, k - 1});
-		indicesCubesToConnect.push_back({i, j, k});
-		indicesCubesToConnect.push_back({i, j - 1, k});
+		indicesCubesToConnect[0] = {i, j - 1, k - 1};
+		indicesCubesToConnect[1] = {i, j, k - 1};
+		indicesCubesToConnect[2] = {i, j, k};
+		indicesCubesToConnect[3] = {i, j - 1, k};
+		sdfEdgeEnd = sdfGrid[i+1][j][k];
 		break;
 	case Direction::BOTTOM:
-		indicesCubesToConnect.push_back({i - 1, j, k - 1});
-		indicesCubesToConnect.push_back({i - 1, j, k});
-		indicesCubesToConnect.push_back({i, j, k});
-		indicesCubesToConnect.push_back({i, j, k - 1});
+		indicesCubesToConnect[0] = {i - 1, j, k - 1};
+		indicesCubesToConnect[1] = {i - 1, j, k};
+		indicesCubesToConnect[2] = {i, j, k};
+		indicesCubesToConnect[3] = {i, j, k - 1};
+		sdfEdgeEnd = sdfGrid[i][j+1][k];
 		break;
 	case Direction::BACK:
-		indicesCubesToConnect.push_back({i - 1, j - 1, k});
-		indicesCubesToConnect.push_back({i, j - 1, k});
-		indicesCubesToConnect.push_back({i, j, k});
-		indicesCubesToConnect.push_back({i - 1, j, k});
+		indicesCubesToConnect[0] = {i - 1, j - 1, k};
+		indicesCubesToConnect[1] = {i, j - 1, k};
+		indicesCubesToConnect[2] = {i, j, k};
+		indicesCubesToConnect[3] = {i - 1, j, k};
+		sdfEdgeEnd = sdfGrid[i][j][k+1];
 		break;
 	}
 
 	for (const vecIndices& indices : indicesCubesToConnect) {
-		int iC{static_cast<int>(indices[0])};
-		int jC{static_cast<int>(indices[1])};
-		int kC{static_cast<int>(indices[2])};
+		int iC{indices[0]};
+		int jC{indices[1]};
+		int kC{indices[2]};
 		g_outputPositions.push_back(Vertices[iC][jC][kC]);
-	}
-
-	vecIndices ids{i,j,k};
-	switch (endEdge) {
-	case Direction::RIGHT:
-		ids = {i + 1, j, k};
-		break;
-	case Direction::BOTTOM:
-		ids = {i, j + 1, k};
-		break;
-	case Direction::BACK:
-		ids = {i, j, k + 1};
-		break;
 	}
 
 	int baseIndex = g_outputPositions.size() - 4;
 	// change l'odre des triangles en fonction du changement de signe
-	if (sdfGrid[i][j][k] >= sdfGrid[ids[0]][ids[1]][ids[2]]) {
+	if (sdfGrid[i][j][k] >= sdfEdgeEnd) {
 		g_outputTriangles.push_back(baseIndex);
 		g_outputTriangles.push_back(baseIndex + 2);
 		g_outputTriangles.push_back(baseIndex + 1);
@@ -584,21 +542,17 @@ void addTriangles(int i, int j, int k, Direction::To endEdge, const Array3D<Vec3
 }
 
 void dualContouring(const std::vector<Vec3>& positions, int gridSize,
-		    const BasicANNkdTree& kdTree, int kernelType, float radius) {
+		    const BasicANNkdTree& kdTree, int kernelType, float radius, 
+			size_t nbIterations = 10, unsigned int knn = 20) {
 
 	int cellGridSize{gridSize - 1};
 
 	auto [min, max] = boundingBox(positions);
 
-	dbgGridNodesPos.clear();
-	dbgGridNodesNeg.clear();
-	dbgCentersPos.clear();
-	dbgCentersNeg.clear();
-	dbgGridNodesPos.reserve(size_t(gridSize) * gridSize * gridSize);
-	dbgGridNodesNeg.reserve(size_t(gridSize) * gridSize * gridSize);
-
 	// grille uniforme
 	Array3D<float> sdfGrid(gridSize, std::vector<std::vector<float>>(gridSize, std::vector<float>(gridSize, 0.0f)));
+	Array3D<Vec3> vec3Grid(cellGridSize, std::vector<std::vector<Vec3>>(cellGridSize, std::vector<Vec3>(cellGridSize, Vec3(0.0f, 0.0f, 0.0f))));
+
 
 	Vec3 range{max - min};
 	Vec3 step{range / std::max(1, gridSize - 1)};
@@ -608,43 +562,20 @@ void dualContouring(const std::vector<Vec3>& positions, int gridSize,
 			for (int k{0}; k < gridSize; k++) {
 				Vec3 gridPosition(min[0] + i * step[0], min[1] + j * step[1], min[2] + k * step[2]);
 
-				sdfGrid[i][j][k] = sdfHPSS(gridPosition, positions, normals, kdTree, kernelType, radius);
+				sdfGrid[i][j][k] = sdfHPSS(gridPosition, positions, normals, kdTree, kernelType, radius, nbIterations, knn);
 
-				if (sdfGrid[i][j][k] > 0) {
-					dbgGridNodesPos.push_back(gridPosition);
-				} else {
-					dbgGridNodesNeg.push_back(gridPosition);
-				}
-			}
-		}
-	}
-
-	Array3D<Vec3> vec3Grid(cellGridSize, std::vector<std::vector<Vec3>>(cellGridSize, std::vector<Vec3>(cellGridSize, Vec3(0.0f, 0.0f, 0.0f))));
-	std::vector<int> cellVertexId(cellGridSize * cellGridSize * cellGridSize, -1);
-
-	// reparcourir le tableau de cube en cubes et voir ou si le cube a un changement de signe et placer les points si c'est le cas
-	for (int i{0}; i < cellGridSize; i++) {
-		for (int j{0}; j < cellGridSize; j++) {
-			for (int k{0}; k < cellGridSize; k++) {
-
-				if (isCubeActive(sdfGrid, i, j, k)) {
+				if(i < cellGridSize && j < cellGridSize && k < cellGridSize){
 					Vec3 center(
 					    min[0] + (i + 0.5f) * step[0],
 					    min[1] + (j + 0.5f) * step[1],
 					    min[2] + (k + 0.5f) * step[2]);
 					vec3Grid[i][j][k] = center;
-
-					cellVertexId[to1d(i, j, k, cellGridSize)] = to1d(i, j, k, cellGridSize);
-					// signe du centre (pour debug avec couleur)
-					float centerSdf = sdfHPSS(center, positions, normals, kdTree, kernelType, radius);
-					if (centerSdf >= 0.f)
-						dbgCentersPos.push_back(center);
-					else
-						dbgCentersNeg.push_back(center);
 				}
 			}
 		}
 	}
+
+	
 
 	// parcourir les arretes pour connecter les points
 	for (int i{0}; i < cellGridSize; i++) {
@@ -666,10 +597,6 @@ void dualContouring(const std::vector<Vec3>& positions, int gridSize,
 
 	std::cout << "Nombre de triangles : " << g_outputTriangles.size() << '\n';
 	std::cout << "Nombre de sommets : " << g_outputPositions.size() << '\n';
-
-	std::cout << "Nombre de cases actives " << dbgCentersPos.size() + dbgCentersNeg.size() << '\n';
-
-	// drawTriangleMesh();
 }
 
 int main(int argc, char** argv) {
@@ -692,12 +619,15 @@ int main(int argc, char** argv) {
 
 	{
 		// Load a first pointset, and build a kd-tree:
-		loadPN("pointsets/igea.pn", positions, normals);
+		loadPN("pointsets/face2.pn", positions, normals);
 
 		BasicANNkdTree kdtree;
 		kdtree.build(positions);
 
-		dualContouring(positions, /*gridSize*/ 16, kdtree, KernelType::GAUSSIEN, /*radius*/ 1.0f);
+		Chrono timer;
+		timer.start();
+		dualContouring(positions, /*gridSize*/ 64, kdtree, KernelType::GAUSSIEN, /*radius*/ 1.0f, /*nbIterations*/ 5, /*nb voisins*/ 10);
+		timer.end();
 
 		// Create a second pointset that is artificial, and project it on pointset1 using MLS techniques:
 		positions2.resize(100000);
