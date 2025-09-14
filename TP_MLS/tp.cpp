@@ -237,15 +237,6 @@ void drawTriangleMesh(std::vector<Vec3> const& i_positions, std::vector<unsigned
 	glEnd();
 }
 
-void drawPointSet(std::vector<Vec3> const& i_positions, std::vector<Vec3> const& i_normals) {
-	glBegin(GL_POINTS);
-	for (unsigned int pIt = 0; pIt < i_positions.size(); ++pIt) {
-		glNormal3f(i_normals[pIt][0], i_normals[pIt][1], i_normals[pIt][2]);
-		glVertex3f(i_positions[pIt][0], i_positions[pIt][1], i_positions[pIt][2]);
-	}
-	glEnd();
-}
-
 static void drawPoints(const std::vector<Vec3>& pts, const Vec3& color, float size) {
 	if (pts.empty())
 		return;
@@ -262,7 +253,7 @@ void draw() {
 	glPointSize(2); // for example...
 
 	glColor3f(0.8, 0.8, 1);
-	//drawPointSet(positions , normals);
+	// drawPointSet(positions , normals);
 
 	glColor3f(1, 0.5, 0.5);
 	// drawPointSet(positions2 , normals2);
@@ -270,8 +261,8 @@ void draw() {
 	// drawPoints(dbgGridNodesPos, Vec3(0.6f, 0.6f, 0.6f), 2.0f);
 	// drawPoints(dbgGridNodesNeg, Vec3(0.f, 0.6f, 0.6f), 2.0f);
 
-	//drawPoints(dbgCentersPos, Vec3(0.1f, 0.9f, 0.1f), 2.0f);
-	//drawPoints(dbgCentersNeg, Vec3(0.9f, 0.1f, 0.1f), 2.0f);
+	// drawPoints(dbgCentersPos, Vec3(0.1f, 0.9f, 0.1f), 2.0f);
+	// drawPoints(dbgCentersNeg, Vec3(0.9f, 0.1f, 0.1f), 2.0f);
 
 	drawTriangleMesh(g_outputPositions, g_outputTriangles);
 }
@@ -420,8 +411,6 @@ void HPSS(const Vec3& inputPoint, Vec3& outputPoint, Vec3& outputNormal,
 
 		point = centroid;
 		normalOut = normal;
-
-
 	}
 	delete[] id_nearest_neighbors;
 	delete[] square_distances_to_neighbors;
@@ -466,10 +455,9 @@ float sdfHPSS(const Vec3& inputPoint, const std::vector<Vec3>& positions, const 
 
 	return signe * dist;
 }
+
 template <typename T>
 using Array3D = std::vector<std::vector<std::vector<T>>>;
-
-
 
 struct vecIndices {
 	int indices[3];
@@ -481,69 +469,77 @@ struct vecIndices {
 	}
 };
 
-void addTriangles(int i, int j, int k, Direction::To endEdge, const Array3D<Vec3>& Vertices, const Array3D<float>& sdfGrid) {
+void addTriangles(int i, int j, int k, Direction::To endEdge, const Array3D<Vec3>& Vertices, const Array3D<float>& sdfGrid,
+                  const std::vector<Vec3>& positions, const std::vector<Vec3>& normals, const BasicANNkdTree& kdTree,
+                  int kernelType, float radius, size_t nbIterations, unsigned int knn) {
 
-	if(i == 0 && endEdge != Direction::RIGHT) return;
-	if(j == 0 && endEdge != Direction::BOTTOM) return;
-	if(k == 0 && endEdge != Direction::BACK) return;
+    if (i == 0 && endEdge != Direction::RIGHT)
+        return;
+    if (j == 0 && endEdge != Direction::BOTTOM)
+        return;
+    if (k == 0 && endEdge != Direction::BACK)
+        return;
 
-	std::array<vecIndices, 4> indicesCubesToConnect;
-	float sdfEdgeEnd{};
-	switch (endEdge) {
-	case Direction::RIGHT:
-		indicesCubesToConnect[0] = {i, j - 1, k - 1};
-		indicesCubesToConnect[1] = {i, j, k - 1};
-		indicesCubesToConnect[2] = {i, j, k};
-		indicesCubesToConnect[3] = {i, j - 1, k};
-		sdfEdgeEnd = sdfGrid[i+1][j][k];
-		break;
-	case Direction::BOTTOM:
-		indicesCubesToConnect[0] = {i - 1, j, k - 1};
-		indicesCubesToConnect[1] = {i - 1, j, k};
-		indicesCubesToConnect[2] = {i, j, k};
-		indicesCubesToConnect[3] = {i, j, k - 1};
-		sdfEdgeEnd = sdfGrid[i][j+1][k];
-		break;
-	case Direction::BACK:
-		indicesCubesToConnect[0] = {i - 1, j - 1, k};
-		indicesCubesToConnect[1] = {i, j - 1, k};
-		indicesCubesToConnect[2] = {i, j, k};
-		indicesCubesToConnect[3] = {i - 1, j, k};
-		sdfEdgeEnd = sdfGrid[i][j][k+1];
-		break;
-	}
+    std::array<vecIndices, 4> indicesCubesToConnect;
+    float sdfEdgeEnd{};
+    switch (endEdge) {
+    case Direction::RIGHT:
+        indicesCubesToConnect[0] = {i, j - 1, k - 1};
+        indicesCubesToConnect[1] = {i, j, k - 1};
+        indicesCubesToConnect[2] = {i, j, k};
+        indicesCubesToConnect[3] = {i, j - 1, k};
+        sdfEdgeEnd = sdfGrid[i + 1][j][k];
+        break;
+    case Direction::BOTTOM:
+        indicesCubesToConnect[0] = {i - 1, j, k - 1};
+        indicesCubesToConnect[1] = {i - 1, j, k};
+        indicesCubesToConnect[2] = {i, j, k};
+        indicesCubesToConnect[3] = {i, j, k - 1};
+        sdfEdgeEnd = sdfGrid[i][j + 1][k];
+        break;
+    case Direction::BACK:
+        indicesCubesToConnect[0] = {i - 1, j - 1, k};
+        indicesCubesToConnect[1] = {i, j - 1, k};
+        indicesCubesToConnect[2] = {i, j, k};
+        indicesCubesToConnect[3] = {i - 1, j, k};
+        sdfEdgeEnd = sdfGrid[i][j][k + 1];
+        break;
+    }
 
-	for (const vecIndices& indices : indicesCubesToConnect) {
-		int iC{indices[0]};
-		int jC{indices[1]};
-		int kC{indices[2]};
-		g_outputPositions.push_back(Vertices[iC][jC][kC]);
-	}
+    for (const vecIndices& indices : indicesCubesToConnect) {
+        int iC{indices[0]};
+        int jC{indices[1]};
+        int kC{indices[2]};
+        Vec3 centerHPSS;
+        Vec3 normal;
+        HPSS(Vertices[iC][jC][kC], centerHPSS, normal, positions, normals, kdTree, kernelType, radius, nbIterations, knn);
+        g_outputPositions.push_back(centerHPSS);
+    }
 
-	int baseIndex = g_outputPositions.size() - 4;
-	// change l'odre des triangles en fonction du changement de signe
-	if (sdfGrid[i][j][k] >= sdfEdgeEnd) {
-		g_outputTriangles.push_back(baseIndex);
-		g_outputTriangles.push_back(baseIndex + 2);
-		g_outputTriangles.push_back(baseIndex + 1);
+    int baseIndex = g_outputPositions.size() - 4;
+    // change l'odre des triangles en fonction du changement de signe
+    if (sdfGrid[i][j][k] >= sdfEdgeEnd) {
+        g_outputTriangles.push_back(baseIndex);
+        g_outputTriangles.push_back(baseIndex + 2);
+        g_outputTriangles.push_back(baseIndex + 1);
 
-		g_outputTriangles.push_back(baseIndex);
-		g_outputTriangles.push_back(baseIndex + 3);
-		g_outputTriangles.push_back(baseIndex + 2);
-	} else {
-		g_outputTriangles.push_back(baseIndex);
-		g_outputTriangles.push_back(baseIndex + 1);
-		g_outputTriangles.push_back(baseIndex + 2);
+        g_outputTriangles.push_back(baseIndex);
+        g_outputTriangles.push_back(baseIndex + 3);
+        g_outputTriangles.push_back(baseIndex + 2);
+    } else {
+        g_outputTriangles.push_back(baseIndex);
+        g_outputTriangles.push_back(baseIndex + 1);
+        g_outputTriangles.push_back(baseIndex + 2);
 
-		g_outputTriangles.push_back(baseIndex);
-		g_outputTriangles.push_back(baseIndex + 2);
-		g_outputTriangles.push_back(baseIndex + 3);
-	}
+        g_outputTriangles.push_back(baseIndex);
+        g_outputTriangles.push_back(baseIndex + 2);
+        g_outputTriangles.push_back(baseIndex + 3);
+    }
 }
 
 void dualContouring(const std::vector<Vec3>& positions, int gridSize,
-		    const BasicANNkdTree& kdTree, int kernelType, float radius, 
-			size_t nbIterations = 10, unsigned int knn = 20) {
+		    const BasicANNkdTree& kdTree, int kernelType, float radius,
+		    size_t nbIterations = 10, unsigned int knn = 20) {
 
 	int cellGridSize{gridSize - 1};
 
@@ -553,18 +549,16 @@ void dualContouring(const std::vector<Vec3>& positions, int gridSize,
 	Array3D<float> sdfGrid(gridSize, std::vector<std::vector<float>>(gridSize, std::vector<float>(gridSize, 0.0f)));
 	Array3D<Vec3> vec3Grid(cellGridSize, std::vector<std::vector<Vec3>>(cellGridSize, std::vector<Vec3>(cellGridSize, Vec3(0.0f, 0.0f, 0.0f))));
 
-
 	Vec3 range{max - min};
 	Vec3 step{range / std::max(1, gridSize - 1)};
 
+	// calculer les sdf sur les sommets de la grille uniforme et calcul des points dans les cellules
 	for (int i{0}; i < gridSize; i++) {
 		for (int j{0}; j < gridSize; j++) {
 			for (int k{0}; k < gridSize; k++) {
 				Vec3 gridPosition(min[0] + i * step[0], min[1] + j * step[1], min[2] + k * step[2]);
-
 				sdfGrid[i][j][k] = sdfHPSS(gridPosition, positions, normals, kdTree, kernelType, radius, nbIterations, knn);
-
-				if(i < cellGridSize && j < cellGridSize && k < cellGridSize){
+				if (i < cellGridSize && j < cellGridSize && k < cellGridSize) {
 					Vec3 center(
 					    min[0] + (i + 0.5f) * step[0],
 					    min[1] + (j + 0.5f) * step[1],
@@ -575,21 +569,19 @@ void dualContouring(const std::vector<Vec3>& positions, int gridSize,
 		}
 	}
 
-	
-
 	// parcourir les arretes pour connecter les points
 	for (int i{0}; i < cellGridSize; i++) {
 		for (int j{0}; j < cellGridSize; j++) {
 			for (int k{0}; k < cellGridSize; k++) {
 				// check changement signe sur les 3 arretes
-				if ((sdfGrid[i][j][k] > 0 && sdfGrid[i + 1][j][k] < 0) || (sdfGrid[i][j][k] < 0 && sdfGrid[i + 1][j][k] > 0)) {
-					addTriangles(i, j, k, Direction::To::RIGHT, vec3Grid, sdfGrid);
+				if ((sdfGrid[i][j][k] >= 0 && sdfGrid[i + 1][j][k] < 0) || (sdfGrid[i][j][k] < 0 && sdfGrid[i + 1][j][k] >= 0)) {
+					addTriangles(i, j, k, Direction::To::RIGHT, vec3Grid, sdfGrid, positions, normals, kdTree, kernelType, radius, nbIterations, knn);
 				}
-				if ((sdfGrid[i][j][k] > 0 && sdfGrid[i][j + 1][k] < 0) || (sdfGrid[i][j][k] < 0 && sdfGrid[i][j + 1][k] > 0)) {
-					addTriangles(i, j, k, Direction::To::BOTTOM, vec3Grid, sdfGrid);
+				if ((sdfGrid[i][j][k] >= 0 && sdfGrid[i][j + 1][k] < 0) || (sdfGrid[i][j][k] < 0 && sdfGrid[i][j + 1][k] >= 0)) {
+					addTriangles(i, j, k, Direction::To::BOTTOM, vec3Grid, sdfGrid, positions, normals, kdTree, kernelType, radius, nbIterations, knn);
 				}
-				if ((sdfGrid[i][j][k] > 0 && sdfGrid[i][j][k + 1] < 0) || (sdfGrid[i][j][k] < 0 && sdfGrid[i][j][k + 1] > 0)) {
-					addTriangles(i, j, k, Direction::To::BACK, vec3Grid, sdfGrid);
+				if ((sdfGrid[i][j][k] >= 0 && sdfGrid[i][j][k + 1] < 0) || (sdfGrid[i][j][k] < 0 && sdfGrid[i][j][k + 1] >= 0)) {
+					addTriangles(i, j, k, Direction::To::BACK, vec3Grid, sdfGrid, positions, normals, kdTree, kernelType, radius, nbIterations, knn);
 				}
 			}
 		}
@@ -619,14 +611,14 @@ int main(int argc, char** argv) {
 
 	{
 		// Load a first pointset, and build a kd-tree:
-		loadPN("pointsets/face2.pn", positions, normals);
+		loadPN("pointsets/igea.pn", positions, normals);
 
 		BasicANNkdTree kdtree;
 		kdtree.build(positions);
 
 		Chrono timer;
 		timer.start();
-		dualContouring(positions, /*gridSize*/ 64, kdtree, KernelType::GAUSSIEN, /*radius*/ 1.0f, /*nbIterations*/ 5, /*nb voisins*/ 10);
+		dualContouring(positions, /*gridSize*/ 128, kdtree, KernelType::GAUSSIEN, /*radius*/ 1.f, /*nbIterations*/ 5, /*nb voisins*/ 10);
 		timer.end();
 
 		// Create a second pointset that is artificial, and project it on pointset1 using MLS techniques:
