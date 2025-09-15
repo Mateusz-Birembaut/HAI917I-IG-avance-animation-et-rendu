@@ -545,6 +545,11 @@ void dualContouring(const std::vector<Vec3>& positions, int gridSize,
 
 	auto [min, max] = boundingBox(positions);
 
+    Vec3 diag = max - min;
+    float margin = 0.01f; 
+    min -= margin * diag;
+    max += margin * diag;
+
 	// grille uniforme
 	Array3D<float> sdfGrid(gridSize, std::vector<std::vector<float>>(gridSize, std::vector<float>(gridSize, 0.0f)));
 	Array3D<Vec3> vec3Grid(cellGridSize, std::vector<std::vector<Vec3>>(cellGridSize, std::vector<Vec3>(cellGridSize, Vec3(0.0f, 0.0f, 0.0f))));
