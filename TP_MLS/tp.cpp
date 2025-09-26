@@ -33,6 +33,7 @@
 #include <float.h>
 #include <random>
 #include <set>
+#include <map>
 
 std::vector<Vec3> positions;
 std::vector<Vec3> normals;
@@ -42,6 +43,10 @@ std::vector<Vec3> normals2;
 
 std::vector<Vec3> g_outputPositions;
 std::vector<unsigned int> g_outputTriangles;
+
+
+std::vector<Vec3> g_outputPositions_base;
+std::vector<unsigned int> g_outputTriangles_base;
 
 /* std::vector<Vec3> dbgGridNodesPos;
 std::vector<Vec3> dbgGridNodesNeg;
@@ -265,6 +270,7 @@ void draw() {
 	// drawPoints(dbgCentersNeg, Vec3(0.9f, 0.1f, 0.1f), 2.0f);
 
 	drawTriangleMesh(g_outputPositions, g_outputTriangles);
+	drawTriangleMesh(g_outputPositions_base, g_outputTriangles_base);
 }
 
 void display() {
@@ -596,6 +602,243 @@ void dualContouring(const std::vector<Vec3>& positions, int gridSize,
 	std::cout << "Nombre de sommets : " << g_outputPositions.size() << '\n';
 }
 
+
+struct Polar {
+    float r;
+    float theta; 
+    float phi; 
+	int idx;
+};
+
+Polar cartToPolar(const Vec3& pRel) {
+    Polar s;
+    s.r = pRel.length();
+    if (s.r == 0.f) {
+        s.theta = 0.f;
+        s.phi = 0.f;
+        return s;
+    }
+    s.theta = std::atan2(pRel[1], pRel[0]);
+    float zClamped = std::max(-1.f, std::min(1.f, pRel[2] / s.r));
+    s.phi = std::acos(zClamped);
+    return s;
+}
+
+struct Bin{
+	int count{};
+	float rMin{};
+	float rMax{};
+	float rMean{};
+	std::vector<Polar> polars;
+
+};
+
+void embedWatermarkInBins(std::vector<Bin>& bins, const std::string& bits, float alpha){
+    if(bits.empty() || bins.empty()) return;
+    if(alpha <= 0.f || alpha >= 0.49f) return;
+
+    size_t bCount = std::min(bits.size(), bins.size());
+
+    const float targetHigh = 0.5f + alpha;
+    const float targetLow  = 0.5f - alpha;
+
+	size_t bitIdx = 0;
+    for(size_t b = 0; b < bins.size() && bitIdx < bits.size(); ++b){
+        Bin& bin = bins[b];
+        if(bin.count == 0) continue;
+
+        bool bit1 = (bits[bitIdx] == '1');
+
+        int iter = 0;
+        while(iter < 6){
+			float mean{};
+            if(bit1){
+                if(bin.rMean >= targetHigh) break;
+                float k = (1.f - 2.f*alpha)/(1.f + 2.f*alpha); 
+                for(auto& p : bin.polars){
+                    p.r = std::pow(std::clamp(p.r, 0.f, 1.f), k);
+					mean += p.r;
+				}
+
+
+            }else{
+                if(bin.rMean <= targetLow) break;
+                float k = (1.f + 2.f*alpha)/(1.f - 2.f*alpha); 
+                for(auto& p : bin.polars){
+					p.r = std::pow(std::clamp(p.r, 0.f, 1.f), k);
+					mean += p.r;
+				}
+            }
+			bin.rMean = mean / bin.count;
+            ++iter;
+        }
+		++bitIdx;
+    }
+}
+
+void cho(const std::string& bits, float alpha){
+	if(g_outputPositions.empty()) return;
+
+	int nbBits {bits.size()};
+
+	// calcul du barycentre
+	Vec3 barycenter(0.0f, 0.0f, 0.0f);
+	for(const Vec3& position : g_outputPositions){
+		barycenter += position;
+	}
+	barycenter /= static_cast<float>(g_outputPositions.size());
+
+	// trnasformation en coordonnées polaires
+	float rMax{-INFINITY};
+	std::vector<Polar> posPolar;
+	posPolar.reserve(g_outputPositions.size());
+
+	for(size_t i=0 ; i<g_outputPositions.size() ; ++i){
+        Polar pol = cartToPolar(g_outputPositions[i] - barycenter);
+        pol.idx = (int)i; // on stock l'id pour plus tard mettre a jour la position des sommets
+        posPolar.push_back(pol);
+        if(pol.r > rMax) rMax = pol.r; 
+    }
+
+	// histogramme
+	std::vector<Bin> bins(static_cast<size_t>(std::ceil(rMax / alpha)), {0, INFINITY, -INFINITY, 0.0f});
+
+	for(const Polar& pos : posPolar){
+		int binIndex = (int)std::floor(pos.r / alpha);
+		Bin& bin = bins[binIndex];
+		bin.count++;
+		if(pos.r < bin.rMin) bin.rMin = pos.r;
+		if(pos.r > bin.rMax) bin.rMax = pos.r;
+		bin.polars.push_back(pos);
+	}
+
+	// normalisation
+	for(auto& bin : bins){
+		float rM {};
+		float denom {bin.rMax - bin.rMin};
+		if(denom != 0){
+			for(auto& pol : bin.polars){
+				float rNorm = (pol.r - bin.rMin) / (bin.rMax - bin.rMin);
+				pol.r = rNorm;
+				rM += pol.r;
+			}
+			rM /= bin.count;
+			bin.rMean = rM;
+		}
+	}
+
+	embedWatermarkInBins(bins, bits, alpha);
+
+	for(const auto& b : bins){
+        if(b.count == 0) continue;
+        float denom = b.rMax - b.rMin;
+        for(const auto& pol : b.polars){
+            if(pol.idx < 0) continue;
+            float rFinal = (denom > 0.f) ? (b.rMin + pol.r * denom) : b.rMin;
+            float sinPhi = std::sin(pol.phi);
+            Vec3 dir(std::cos(pol.theta) * sinPhi,
+                     std::sin(pol.theta) * sinPhi,
+                     std::cos(pol.phi));
+            g_outputPositions[(size_t)pol.idx] = barycenter + rFinal * dir;
+        }
+    }
+
+
+}
+
+std::string extractWatermark(size_t nbBits, float alpha){
+	if(g_outputPositions.empty()) return "Positions vide";
+
+	// calcul du barycentre
+	Vec3 barycenter(0.0f, 0.0f, 0.0f);
+	for(const Vec3& position : g_outputPositions){
+		barycenter += position;
+	}
+	barycenter /= static_cast<float>(g_outputPositions.size());
+
+	float rMax{-INFINITY};
+	std::vector<Polar> posPolar;
+	posPolar.reserve(g_outputPositions.size());
+	for(size_t i=0 ; i<g_outputPositions.size() ; ++i){
+        Polar pol = cartToPolar(g_outputPositions[i] - barycenter);
+        pol.idx = (int)i;
+        posPolar.push_back(pol);
+        if(pol.r > rMax) rMax = pol.r;
+    }
+
+	// histogramme
+	std::vector<Bin> bins(static_cast<size_t>(std::ceil(rMax / alpha)), {0, INFINITY, -INFINITY, 0.0f});
+
+	for(const Polar& pos : posPolar){
+		int binIndex = (int)std::floor(pos.r / alpha);
+		Bin& bin = bins[binIndex];
+		bin.count++;
+		if(pos.r < bin.rMin) bin.rMin = pos.r;
+		if(pos.r > bin.rMax) bin.rMax = pos.r;
+		bin.polars.push_back(pos);
+	}
+
+	// normalisation
+	for(auto& bin : bins){
+		float rM {};
+		float denom {bin.rMax - bin.rMin};
+		if(denom != 0){
+			for(auto& pol : bin.polars){
+				float rNorm = (pol.r - bin.rMin) / (bin.rMax - bin.rMin);
+				pol.r = rNorm;
+				rM += pol.r;
+			}
+			rM /= bin.count;
+			bin.rMean = rM;
+		}
+	}
+
+    std::string out;
+    out.reserve(nbBits);
+
+    for(size_t b=0; b<bins.size() && out.size()<nbBits; ++b){
+        if(bins[b].count == 0) continue;
+        float m = bins[b].rMean;
+        if(m > 0.5f ) out.push_back('1');
+        else if(m < 0.5f ) out.push_back('0');
+        else out.push_back('?');
+    }
+
+    return out;
+}
+
+
+static void translatePositions(std::vector<Vec3>& pts, const Vec3& t){
+    for(auto& p : pts) p += t;
+}
+
+static std::pair<Vec3,Vec3> bbox(const std::vector<Vec3>& pts){
+    if(pts.empty()) return {Vec3(0,0,0), Vec3(0,0,0)};
+    Vec3 mn(FLT_MAX,FLT_MAX,FLT_MAX), mx(-FLT_MAX,-FLT_MAX,-FLT_MAX);
+    for(const auto& p: pts){
+        if(p[0]<mn[0]) mn[0]=p[0]; if(p[1]<mn[1]) mn[1]=p[1]; if(p[2]<mn[2]) mn[2]=p[2];
+        if(p[0]>mx[0]) mx[0]=p[0]; if(p[1]>mx[1]) mx[1]=p[1]; if(p[2]>mx[2]) mx[2]=p[2];
+    }
+    return {mn,mx};
+}
+
+static void offsetWatermarkedMesh(float gapFactor = 1.2f){
+    if(g_outputPositions.empty() || g_outputPositions_base.empty()) return;
+    auto [mnB, mxB] = bbox(g_outputPositions_base);
+    float dx = (mxB[0]-mnB[0]) * gapFactor;
+    translatePositions(g_outputPositions, Vec3(dx, 0.f, 0.f));
+}
+
+double computeRMSE(const std::vector<Vec3>& base, const std::vector<Vec3>& water){
+    if(base.size() != water.size() || base.empty()) return 0.0;
+    double acc = 0.0;
+    for(size_t i=0;i<base.size();++i){
+        Vec3 d = water[i] - base[i];
+        acc += d.length() * d.length();
+    }
+    return std::sqrt(acc / base.size());
+}
+
 int main(int argc, char** argv) {
 	if (argc > 2) {
 		exit(EXIT_FAILURE);
@@ -626,6 +869,9 @@ int main(int argc, char** argv) {
 		dualContouring(positions, /*gridSize*/ 128, kdtree, KernelType::GAUSSIEN, /*radius*/ 1.f, /*nbIterations*/ 5, /*nb voisins*/ 10);
 		timer.end();
 
+		g_outputPositions_base = g_outputPositions;
+		g_outputTriangles_base = g_outputTriangles;
+
 		// Create a second pointset that is artificial, and project it on pointset1 using MLS techniques:
 		positions2.resize(100000);
 		normals2.resize(positions2.size());
@@ -637,6 +883,19 @@ int main(int argc, char** argv) {
 			positions2[pIt].normalize();
 			positions2[pIt] = 0.6 * positions2[pIt];
 		}
+
+		std::string bits = "11011";
+		float aplha {0.01};
+		cho(bits, aplha);
+		std::string msgRecu = extractWatermark(bits.size(),  aplha);
+		std::cout << "Message Envoyé : " << bits << ", Message Reçus : " << msgRecu << ", sont égaux ? : " << (bits==msgRecu) << '\n';
+		std::cout << "RMSE : " << computeRMSE(g_outputPositions_base, g_outputPositions) << '\n';
+
+
+		offsetWatermarkedMesh(1.1f);
+
+
+
 
 		// PROJECT USING MLS (HPSS and APSS):
 		// TODO
