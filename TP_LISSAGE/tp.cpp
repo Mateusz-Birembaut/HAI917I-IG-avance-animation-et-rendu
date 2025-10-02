@@ -188,6 +188,7 @@ void collect_one_ring(std::vector<Vec3> const &i_vertices,
 // vector avec laplacien avant lissage point to barycentre des voisins + un pas (jouer avec nombre iterations)
 // chaque sommets moyenne barycentre voisinage
 
+// retourne le centroid d'un verteur de vertices
 Vec3 centroid(const std::vector<Vec3> &vertices)
 {
     Vec3 centroid(0.0f, 0.0f, 0.0f);
@@ -198,7 +199,7 @@ Vec3 centroid(const std::vector<Vec3> &vertices)
     return centroid / vertices.size();
 }
 
-// 1.B
+// 1.B, Calcule le centroid des voisins puis on a le vecteur pour déplacer notre sommet en calculant le vecteur centroid - sommet courrant 
 void computeLaplaceMean(Mesh &mesh, std::vector<Vec3> &Lu)
 {
     std::vector<std::vector<unsigned int>> oneRing;
@@ -220,7 +221,7 @@ void computeLaplaceMean(Mesh &mesh, std::vector<Vec3> &Lu)
     }
 }
 
-// 1.A
+// 1.A, on réutilise la fonction pour calculer le vecteur de déplacement et la courbure sera égal a 0.5x la longueur du vecteur de déplacement
 void calc_uniform_mean_curvature(Mesh &mesh, std::vector<float> &field)
 {
     field.clear();
@@ -235,7 +236,7 @@ void calc_uniform_mean_curvature(Mesh &mesh, std::vector<float> &field)
     }
 }
 
-// 1.B
+// 1.B, on calcule les vecteurs de déplacement de cahque sommets, on applique les déplacements, puis on recalcule les vecteurs ect. n fois
 void uniformSmooth(Mesh &mesh, unsigned int _iters)
 {
     std::vector<Vec3> laplacien;
@@ -250,7 +251,7 @@ void uniformSmooth(Mesh &mesh, unsigned int _iters)
     }
 }
 
-// 1.D
+// 1.D, comme smooth mais on multiplie par un facteur > 0 puis a la prochain itération < 0
 void taubinSmooth(Mesh &mesh, unsigned int _iters, float a, float b)
 {
     assert(a > 0);
@@ -268,7 +269,8 @@ void taubinSmooth(Mesh &mesh, unsigned int _iters, float a, float b)
     }
 }
 
-// 2.0
+// 2.0, on calcule la qualité en fonction du rapport entre le rayon du cercle circonscris et le plus petit coté.
+// ensuite on normalise avec des percentile sinon le résultat etait visuellement pas incroyable
 void calcTriangleQuality(Mesh &mesh)
 {
     for (int i{0}; i < mesh.triangles.size(); ++i)
@@ -340,7 +342,8 @@ float sin_angle(const Vec3 &u, const Vec3 &v)
     return crossProductL / (normU * normV);
 }
 
-
+// on calcule pour chaque triangle les cos et sin pour avoir le cot d'un angle, on ajout cet angle a l'arrete opposé
+// a la fin chaque arrete possède comme poids, la somme des deux angles cotangent opposé dans les triangles adjacents
 void calcWeights(Mesh &mesh, const std::vector<std::vector<unsigned int>> &oneRing, std::vector<std::vector<float>> &weights)
 {
     weights.clear();
@@ -429,6 +432,10 @@ void calcWeights(Mesh &mesh, const std::vector<std::vector<unsigned int>> &oneRi
     }
 }
 
+
+// pour chaque sommet, on fait la somme pondéré des vecteurs reliant le sommet à ses voisins,
+// les poids sont calculés avec la fonction calcWeights
+// a la fin on divise par la somme des poids pour normaliser
 void computeLaplaceBeltrami(Mesh &mesh, std::vector<Vec3> &laplacienOut)
 {
     std::vector<std::vector<unsigned int>> oneRing;
@@ -463,6 +470,7 @@ void computeLaplaceBeltrami(Mesh &mesh, std::vector<Vec3> &laplacienOut)
     }
 }
 
+
 void calc_mean_curvature(Mesh &mesh, std::vector<float> &field)
 {
     field.clear();
@@ -493,6 +501,10 @@ void beltramiSmooth(Mesh &mesh, unsigned int _iters)
 
 // 3
 
+// pour chaque triangle du maillage, on calcule l'angle au niveau de chaque sommet du triangle.
+// on ajoute cet angle à la somme des angles déjà accumulés pour ce sommet (stockée dans le vecteur field)
+// a la fin, chaque element du vecteur field contient la somme des angles des triangles auxquels le sommet appartient
+// cette somme permet de calculer la courbure  au sommet avec (2*PI - somme des angles).
 void calc_gauss_curvature(Mesh &mesh, std::vector<float> &field)
 {
     field.clear();
