@@ -1,0 +1,79 @@
+[gd_scene load_steps=13 format=3 uid="uid://cwglbafaottch"]
+
+[ext_resource type="Shader" uid="uid://lib3tp1wjs6s" path="res://Shaders/exercice1.gdshader" id="1_ig7tw"]
+[ext_resource type="Texture2D" uid="uid://cawhypcrtuprc" path="res://Textures/colormap1.png" id="2_h2yge"]
+[ext_resource type="ArrayMesh" uid="uid://bjybftajl2d0" path="res://Meshes/lesUV.obj" id="3_1bvp3"]
+[ext_resource type="Shader" uid="uid://c8g4ap3tpj2d5" path="res://Shaders/exercice2.gdshader" id="4_1bvp3"]
+[ext_resource type="Texture2D" uid="uid://dft3cpc2enns3" path="res://Textures/pente.png" id="5_7mycd"]
+[ext_resource type="Texture2D" uid="uid://cuw37jhhrae6i" path="res://Textures/plat.png" id="6_272bh"]
+
+[sub_resource type="FastNoiseLite" id="FastNoiseLite_0xm2m"]
+
+[sub_resource type="NoiseTexture2D" id="NoiseTexture2D_h2yge"]
+noise = SubResource("FastNoiseLite_0xm2m")
+seamless = true
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_ig7tw"]
+render_priority = 0
+shader = ExtResource("1_ig7tw")
+shader_parameter/albedo = Color(1, 1, 1, 1)
+shader_parameter/albedo_texture_size = Vector2i(0, 0)
+shader_parameter/point_size = 1.0
+shader_parameter/roughness = 1.0
+shader_parameter/metallic_texture_channel = Vector4(1, 0, 0, 0)
+shader_parameter/texture_colormap = ExtResource("2_h2yge")
+shader_parameter/texture_noise = SubResource("NoiseTexture2D_h2yge")
+shader_parameter/specular = 0.5
+shader_parameter/metallic = 0.0
+shader_parameter/min_height = 25.0
+shader_parameter/max_height = 50.0
+shader_parameter/uv1_scale = Vector3(100, 100, 100)
+shader_parameter/uv1_offset = Vector3(0, 0, 0)
+shader_parameter/uv2_scale = Vector3(1, 1, 1)
+shader_parameter/uv2_offset = Vector3(0, 0, 0)
+
+[sub_resource type="PlaneMesh" id="PlaneMesh_7dm0k"]
+material = SubResource("ShaderMaterial_ig7tw")
+custom_aabb = AABB(-100, -10, -100, 200, 200, 200)
+subdivide_width = 2000
+subdivide_depth = 2000
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_1bvp3"]
+render_priority = 0
+shader = ExtResource("4_1bvp3")
+shader_parameter/albedo = Color(1, 1, 1, 1)
+shader_parameter/albedo_texture_size = Vector2i(0, 0)
+shader_parameter/point_size = 1.0
+shader_parameter/roughness = 1.0
+shader_parameter/metallic_texture_channel = Vector4(1, 0, 0, 0)
+shader_parameter/specular = 0.5
+shader_parameter/metallic = 0.0
+shader_parameter/uv1_scale = Vector3(100, 100, 100)
+shader_parameter/uv1_offset = Vector3(0, 0, 0)
+shader_parameter/uv2_scale = Vector3(1, 1, 1)
+shader_parameter/uv2_offset = Vector3(0, 0, 0)
+shader_parameter/texture_plat = ExtResource("6_272bh")
+shader_parameter/texture_pente = ExtResource("5_7mycd")
+
+[sub_resource type="Environment" id="Environment_h2yge"]
+ambient_light_color = Color(1, 1, 1, 1)
+
+[node name="Node3D" type="Node3D"]
+
+[node name="Exercice1" type="MeshInstance3D" parent="."]
+transform = Transform3D(100, 0, 0, 0, 100, 0, 0, 0, 100, 106.63585, 0, 0)
+mesh = SubResource("PlaneMesh_7dm0k")
+
+[node name="Exercice2" type="MeshInstance3D" parent="."]
+transform = Transform3D(0.2, 0, 0, 0, 0.2, 0, 0, 0, 0.2, -104.13964, 0, 0)
+mesh = ExtResource("3_1bvp3")
+surface_material_override/0 = SubResource("ShaderMaterial_1bvp3")
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+transform = Transform3D(0.99999994, 0, 0, 0, -0.70957077, 0.70463413, 0, -0.7046342, -0.7095707, 0, 51.389725, 0)
+
+[node name="Camera3D" type="Camera3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.81260264, 0.58281815, 0, -0.58281815, 0.81260264, 0, 48.390514, 0)
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_h2yge")
